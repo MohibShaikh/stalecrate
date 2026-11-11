@@ -75,7 +75,7 @@ Everything to rerun this is in the repo. The tasks are in `bench/tasks.json`, th
 
 - Building rustdoc JSON needs a nightly toolchain, and the JSON format changes between nightlies. I tested with format version 61 (nightly 2026-10-06).
 - Building docs runs build scripts, so crates that need missing system libraries get skipped. On the test machine that meant `bevy_audio` and `bevy_dev_tools` (ALSA) and `bevy_gilrs` (udev).
-- The first `sync` on a dependency tree the size of Bevy took 12 minutes. Later runs use the cache.
+- The first `sync` on a Bevy project builds rustdoc JSON for about 50 crates at two versions each. On my laptop that took over 30 minutes and peaked at 1.8 GB of RAM. Later runs use the cache in `~/.cache/stalecrate`.
 - Usage matching is textual, so a type you shadow with your own of the same name can still match.
 - The benchmark covers one model and one crate family. I haven't measured crates that ship no migration guide, such as egui or wgpu.
 
