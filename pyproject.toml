@@ -1,6 +1,6 @@
 [project]
 name = "stalecrate"
-version = "0.1.0"
+version = "0.1.1"
 description = "Tell your coding agent which Rust crates changed after its training cutoff"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -117,7 +117,8 @@ def related(name, direct):
 
 # crates whose public surface is macros or re-exports; their APIs show up through
 # the crates they expand to or re-export, so diffing them costs builds for no notes
-GLUE = re.compile(r"[_-](macros|macro_utils|macro_logic|derive|derive_internal|internal|proc_macro|impl)$")
+GLUE = re.compile(r"[_-](macros|macro_utils|macro_logic|derive|derive_internal|internal|proc_macro|impl|dylib)$"
+                  r"|[_-]core-deps-[a-z0-9_-]+$")
 
 
 def is_glue(name):

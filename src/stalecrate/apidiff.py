@@ -5,8 +5,14 @@ Prints removed, added and changed public items. Items are keyed by path
 (`crate::module::Type::method`). Re-exports through `prelude` modules are
 dropped so each item is counted once where possible.
 """
+import gzip
+import hashlib
 import json
+import os
 import re
+
+# bump when the item fields or fingerprint rules change; older indexes are rebuilt
+INDEX_FORMAT = 1
 
 RECORD_KINDS = {"struct", "enum", "union", "trait", "function", "type_alias",
                 "constant", "static", "macro", "proc_macro", "trait_alias"}
@@ -128,7 +134,31 @@ def render(item, name):
     return f"{kind} {name}"
 
 
+def _h(s):
+    """Fingerprints are only compared for equality, so the index keeps a short hash."""
+    return hashlib.sha1(s.encode()).hexdigest()[:16]
+
+
 class Api:
+    """The public items of one crate version, keyed by path."""
+
+    @classmethod
+    def from_index(cls, path):
+        with gzip.open(path, "rt") as f:
+            d = json.load(f)
+        if d.get("format") != INDEX_FORMAT:
+            raise ValueError(f"{path}: index format {d.get('format')}, expected {INDEX_FORMAT}")
+        api = cls.__new__(cls)
+        api.crate, api.version, api.items = d["crate"], d["version"], d["items"]
+        return api
+
+    def save_index(self, path):
+        tmp = f"{path}.tmp"
+        with gzip.open(tmp, "wt") as f:
+            json.dump({"format": INDEX_FORMAT, "crate": self.crate, "version": self.version,
+                       "items": self.items}, f, separators=(",", ":"))
+        os.replace(tmp, path)
+
     def __init__(self, path):
         d = json.load(open(path))
         self.crate = d["index"][str(d["root"])]["name"]
@@ -140,6 +170,17 @@ class Api:
         # the raw index is only needed while walking; a big crate's is hundreds of MB
         del self.index, self._seen
 
+    def reexported_crates(self):
+        """Crates this one re-exports items or modules from (`egui` -> `emath`, `epaint`)."""
+        out = set()
+        for it in self.items.values():
+            src = it.get("source") if it["kind"] == "reexport" else None
+            if src:
+                head = src.lstrip(":").split("::")[0]
+                if head not in ("crate", "self", "super", "std", "core", "alloc", self.crate):
+                    out.add(head)
+        return out
+
     def get(self, i):
         return self.index.get(str(i)) if i is not None else None
 
@@ -147,8 +188,8 @@ class Api:
         kind = kind or next(iter(item["inner"]))
         self.items.setdefault(path, {
             "kind": kind,
-            "fp": fingerprint(item),
-            "shape": shape(item),
+            "fp": _h(fingerprint(item)),
+            "shape": _h(shape(item)),
             "sig": render(item, re.split(r"::|\.", path)[-1]),
             "deprecation": item.get("deprecation"),
             "docs": (item.get("docs") or "").split("\n\n")[0][:300],
@@ -202,11 +243,16 @@ class Api:
                 if inner["is_glob"]:
                     if target and "module" in target["inner"]:
                         self.walk(target["id"], prefix)
+                    elif target is None:
+                        # `pub use emath::*`: the items live in another crate
+                        self.items.setdefault(f"{prefix}::*{inner['source']}", {
+                            "kind": "reexport", "source": inner["source"], "fp": _h(inner["source"]),
+                            "shape": _h(inner["source"]), "deprecation": None, "docs": ""})
                     continue
                 p = f"{prefix}::{inner['name']}"
                 if target is None:
-                    self.items.setdefault(p, {"kind": "reexport", "fp": inner["source"], "shape": inner["source"],
-                                              "deprecation": None, "docs": ""})
+                    self.items.setdefault(p, {"kind": "reexport", "source": inner["source"], "fp": _h(inner["source"]),
+                                              "shape": _h(inner["source"]), "deprecation": None, "docs": ""})
                 elif "module" in target["inner"]:
                     self.walk(target["id"], p)
                 elif next(iter(target["inner"])) in RECORD_KINDS:
@@ -270,12 +316,13 @@ def diff(old, new, new_everywhere, all_new_names):
 
 
 def diff_all(old_paths, new_paths):
-    """Diff every crate in `old_paths` ({crate: rustdoc JSON path}) against the
+    """Diff every crate in `old_paths` ({crate: Api or rustdoc JSON path}) against the
     same crate in `new_paths`. All new crates are searched for move targets, so
     an item that moved into a brand-new crate (`bevy_shape`) counts as moved.
     Returns one report per crate present on both sides."""
-    news = {c: Api(p) for c, p in new_paths.items()}
-    olds = {c: Api(p) for c, p in old_paths.items()}
+    load = lambda x: x if isinstance(x, Api) else Api(x)
+    news = {c: load(p) for c, p in new_paths.items()}
+    olds = {c: load(p) for c, p in old_paths.items()}
     old_all = set().union(set(), *(public(a.items) for a in olds.values()))
     all_new_names = {re.split(r"::|\.", p)[-1] for a in news.values() for p in a.items}
     everywhere = {}

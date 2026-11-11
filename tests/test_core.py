@@ -41,6 +41,9 @@ class Registry(unittest.TestCase):
         self.assertTrue(registry.is_glue("bevy_ecs_macros"))
         self.assertTrue(registry.is_glue("bevy_internal"))
         self.assertFalse(registry.is_glue("bevy_ecs"))
+        self.assertTrue(registry.is_glue("wgpu-core-deps-windows-linux-android"))
+        self.assertTrue(registry.is_glue("bevy_dylib"))
+        self.assertFalse(registry.is_glue("wgpu-core"))
 
 
 class Usage(unittest.TestCase):
@@ -72,6 +75,28 @@ class Usage(unittest.TestCase):
     def test_comments_ignored(self):
         r = self.report(removed=[{"path": "c::SceneRoot", "kind": "struct", "name_gone": True}])
         self.assertEqual(self.scan("// SceneRoot was here\nfn main() {}", r), [])
+
+
+class Apidiff(unittest.TestCase):
+    def test_index_roundtrip_and_reexports(self):
+        from stalecrate.apidiff import Api
+        api = Api.__new__(Api)
+        api.crate, api.version = "egui", "0.37.0"
+        api.items = {
+            "egui::Color32": {"kind": "reexport", "source": "ecolor::Color32", "fp": "a", "shape": "a",
+                              "deprecation": None, "docs": ""},
+            "egui::*epaint": {"kind": "reexport", "source": "epaint", "fp": "b", "shape": "b",
+                              "deprecation": None, "docs": ""},
+            "egui::widgets": {"kind": "reexport", "source": "crate::widgets", "fp": "c", "shape": "c",
+                              "deprecation": None, "docs": ""},
+            "egui::Ui": {"kind": "struct", "fp": "d", "shape": "d", "deprecation": None, "docs": ""},
+        }
+        self.assertEqual(api.reexported_crates(), {"ecolor", "epaint"})
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "egui-0.37.0.json.gz"
+            api.save_index(f)
+            back = Api.from_index(f)
+        self.assertEqual((back.crate, back.version, back.items), (api.crate, api.version, api.items))
 
 
 class Notes(unittest.TestCase):

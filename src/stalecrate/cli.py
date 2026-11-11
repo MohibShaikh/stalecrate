@@ -89,23 +89,53 @@ def cmd_sync(a):
         log("no in-scope dependency changed after the cutoff; nothing to write")
         return
     log(f"model knows releases up to {known_until}; {len(rows)} crates changed after it")
-    log(f"rustdoc: {rustdoc.check_toolchain()}")
+    # `status` recomputes this from Cargo.lock without building anything, so hash
+    # the directly scoped crates, before following re-exports
+    inputs = inputs_hash(label, rows)
     families = {}
     for r in rows:
         families.setdefault(r["family"], []).append(r)
     old_paths, new_paths = {}, {}
-    for fam, members in families.items():
-        # a facade (`bevy`) only re-exports its sub-crates; the sub-crates carry the API
-        build = [m for m in members if not (m["name"] == fam and len(members) > 1)
-                 and not registry.is_glue(m["name"])]
-        for m in build:
+
+    def build(members):
+        for m in members:
             try:
-                new_paths[m["name"]] = rustdoc.build(m["name"], m["pinned"], log)
+                new_paths[m["name"]] = rustdoc.api(m["name"], m["pinned"], log)
                 if m["base"]:
-                    old_paths[m["name"]] = rustdoc.build(m["name"], m["base"], log)
+                    old_paths[m["name"]] = rustdoc.api(m["name"], m["base"], log)
             except rustdoc.RustdocError as e:
                 log(f"  skipped: {e}")
                 new_paths.pop(m["name"], None)
+
+    for fam, members in families.items():
+        # a big facade (`bevy`, ~50 sub-crates) only re-exports; its sub-crates carry the API.
+        # Small families (`ratatui` + `ratatui-core`) keep the root, which has items of its own.
+        build([m for m in members if not (m["name"] == fam and len(members) > 6)
+               and not registry.is_glue(m["name"])])
+    # Follow re-exports one level: `egui::Color32` is `ecolor::Color32`, and ecolor
+    # has its own releases. Those crates join the family of the crate re-exporting them.
+    lock = registry.lock_packages(a.path)
+    by_norm = {n.replace("-", "_"): n for n in lock}
+    have = {r["name"] for r in rows}
+    extra = []
+    for name, api_ in list(new_paths.items()):
+        fam = next(r["family"] for r in rows if r["name"] == name)
+        for c in sorted(api_.reexported_crates()):
+            n = by_norm.get(c)
+            if not n or n in have or registry.is_glue(n):
+                continue
+            have.add(n)
+            try:
+                base, newer = registry.baseline(n, lock[n], known_until, a.offline)
+            except OSError:
+                continue
+            if newer and (a.all or base is None or registry.is_breaking(base, lock[n])):
+                row = {"name": n, "pinned": lock[n], "base": base, "newer": newer, "family": fam,
+                       "breaking": base is None or registry.is_breaking(base, lock[n])}
+                rows.append(row); families[fam].append(row); extra.append(row)
+    if extra:
+        log(f"following re-exports: {', '.join(r['name'] for r in extra)}")
+        build(extra)
     log("diffing APIs")
     reports = apidiff.diff_all(old_paths, new_paths)
     files = usage.index(usage.source_files(a.path))
@@ -123,7 +153,7 @@ def cmd_sync(a):
                 log(f"  no upgrade notes for {m['name']}: {e}")
         fams.append({"name": fam, "base": root["base"] or "new", "pinned": root["pinned"],
                      "hits": [h for h in hits if h["crate"] in names], "sections": secs})
-    block = notes.render(fams, label, a.max_tokens, inputs_hash(label, rows))
+    block = notes.render(fams, label, a.max_tokens, inputs)
     if a.dry_run:
         print(block)
         return

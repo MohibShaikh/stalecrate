@@ -9,10 +9,11 @@ stalecrate reads your `Cargo.lock`, finds the dependencies released after the mo
 ## Usage
 
 ```sh
-rustup toolchain install nightly   # rustdoc JSON is nightly-only
 uvx stalecrate scan --model claude-opus-5-5
 uvx stalecrate sync --model claude-opus-5-5
 ```
+
+`sync` downloads a prebuilt API index for each crate version from this repo's `api-index-v1` release. A crate version without one gets built locally from rustdoc JSON, which needs a nightly toolchain (`rustup toolchain install nightly`) and runs the crate's build scripts. The release covers Bevy 0.18.1 and 0.20.1 and current egui and wgpu, with more to come. Set `STALECRATE_NO_DOWNLOAD=1` to always build locally.
 
 `scan` lists the dependencies with releases after the cutoff. `sync` builds the API diffs and writes the notes between `<!-- stalecrate:begin -->` and `<!-- stalecrate:end -->`, leaving the rest of the file alone. It writes to `CLAUDE.md` if the project has one and `AGENTS.md` otherwise, or to `--file`. `stalecrate status` exits 1 when the notes no longer match `Cargo.lock`, so you can run it in CI or a pre-commit hook.
 
@@ -66,18 +67,26 @@ Everything to rerun this is in the repo. The tasks are in `bench/tasks.json`, th
 
 ## How it works
 
-1. **Find what's new.** For every package in `Cargo.lock` that you depend on, or that extends a name you depend on (`bevy_ecs` for `bevy`), it asks crates.io for release dates. The newest release from before the cutoff is the version the model knows. A `0.0.x` upload made long before the real releases counts as a name reservation, so that crate is treated as new.
-2. **Diff the APIs.** It builds rustdoc JSON for both versions in a throwaway package and caches it in `~/.cache/stalecrate`. Then it walks the public items, including methods, fields and enum variants. An item that disappears from one crate and shows up in a crate that's new in this version counts as moved. Changes that only touch trait bounds or lifetime names get dropped, because they rarely break callers.
+1. **Find what's new.** For every package in `Cargo.lock` that you depend on, or that extends a name you depend on (`bevy_ecs` for `bevy`), it asks crates.io for release dates. Crates that a dependency re-exports (egui's `Color32` comes from `ecolor`) join in a second pass. The newest release from before the cutoff is the version the model knows. A `0.0.x` upload made long before the real releases counts as a name reservation, so that crate is treated as new.
+2. **Diff the APIs.** It loads both versions' public APIs from prebuilt indexes, or builds rustdoc JSON in a throwaway package when there is no index, and caches the result in `~/.cache/stalecrate`. Then it walks the public items, including methods, fields and enum variants. An item that disappears from one crate and shows up in a crate that's new in this version counts as moved. Changes that only touch trait bounds or lifetime names get dropped, because they rarely break callers.
 3. **Find what you use.** It runs a text scan of your `.rs` files with comments stripped. A removed name that still exists in another crate (`render_graph::Node` vs `bevy_ui::Node`) only counts when you write the qualified path. This step is an estimate, not name resolution.
 4. **Explain it.** It looks for migration guides shipped inside the crate (Bevy ships `_release-content/migration-guides`), `MIGRATION.md`/`UPGRADING.md`, and changelog entries for the versions in range. If the crate ships none of those, it uses GitHub release notes, and `GITHUB_TOKEN` raises the rate limit. Each used item links to the section that names it. Anything left over gets a one-line note with the old and new signature.
 
 ## Limits
 
-- Building rustdoc JSON needs a nightly toolchain, and the JSON format changes between nightlies. I tested with format version 61 (nightly 2026-10-06).
+- Crates without a prebuilt index need a nightly toolchain, and the rustdoc JSON format changes between nightlies. I tested with format version 61 (nightly 2026-10-06).
 - Building docs runs build scripts, so crates that need missing system libraries get skipped. On the test machine that meant `bevy_audio` and `bevy_dev_tools` (ALSA) and `bevy_gilrs` (udev).
-- The first `sync` on a Bevy project builds rustdoc JSON for about 50 crates at two versions each. On my laptop that took over 30 minutes and peaked at 1.8 GB of RAM. Later runs use the cache in `~/.cache/stalecrate`.
+- Without prebuilt indexes, the first `sync` on a Bevy project builds rustdoc JSON for about 50 crates at two versions each. On my laptop that took over 30 minutes and peaked at 1.8 GB of RAM. Later runs use the cache in `~/.cache/stalecrate`.
 - Usage matching is textual, so a type you shadow with your own of the same name can still match.
 - The benchmark covers one model and one crate family. I haven't measured crates that ship no migration guide, such as egui or wgpu.
+
+## FAQ
+
+**Why Python and not `cargo install`?** The diff logic changed a lot while I checked it against the compiler, and Python was faster to iterate in. It has no dependencies, and `uvx stalecrate` runs it without an install step. The tool only reads rustdoc JSON and text, so Rust would buy little speed. I'd take a port if people want one.
+
+**Does it call a model?** No. Everything is crates.io lookups, rustdoc JSON and text matching. The benchmark scripts call a model. The tool doesn't.
+
+**Which models?** Any model, if you pass `--cutoff YYYY-MM`. Only Claude Opus 5.5 has a built-in cutoff, because it's the only one I could confirm.
 
 ## License
 
