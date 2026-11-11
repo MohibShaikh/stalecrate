@@ -13,7 +13,9 @@ uvx stalecrate scan --model claude-opus-5-5
 uvx stalecrate sync --model claude-opus-5-5
 ```
 
-`sync` downloads a prebuilt API index for each crate version from this repo's `api-index-v1` release. A crate version without one gets built locally from rustdoc JSON, which needs a nightly toolchain (`rustup toolchain install nightly`) and runs the crate's build scripts. The release covers Bevy 0.18.1 and 0.20.1 and current egui and wgpu, with more to come. Set `STALECRATE_NO_DOWNLOAD=1` to always build locally.
+`sync` downloads a prebuilt API index for each crate version from this repo's `api-index-v1` release. A crate version without one gets built locally from rustdoc JSON, which needs a nightly toolchain (`rustup toolchain install nightly`) and runs the crate's build scripts. The release covers Bevy 0.18.1 and 0.20.1, egui 0.34.3 and 0.37.0 (with emath, epaint and ecolor), and wgpu 29.0.3 and 30.0.1, with more to come. Set `STALECRATE_NO_DOWNLOAD=1` to always build locally.
+
+On a Bevy 0.20 project with an empty cache, `sync` took 5 minutes. Almost all of that went to three crates with no index that failed to build for lack of ALSA and udev headers. It remembers those failures for a week, and the next run took 25 seconds.
 
 `scan` lists the dependencies with releases after the cutoff. `sync` builds the API diffs and writes the notes between `<!-- stalecrate:begin -->` and `<!-- stalecrate:end -->`, leaving the rest of the file alone. It writes to `CLAUDE.md` if the project has one and `AGENTS.md` otherwise, or to `--file`. `stalecrate status` exits 1 when the notes no longer match `Cargo.lock`, so you can run it in CI or a pre-commit hook.
 

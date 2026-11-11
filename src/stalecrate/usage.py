@@ -26,7 +26,8 @@ SKIP_DIRS = {"target", ".git", "node_modules"}
 def source_files(root):
     root = pathlib.Path(root)
     for p in root.rglob("*.rs"):
-        if not SKIP_DIRS & set(p.relative_to(root).parts):
+        parts = p.relative_to(root).parts[:-1]
+        if not SKIP_DIRS & set(parts) and not any(x.startswith(".") for x in parts):
             yield p
 
 

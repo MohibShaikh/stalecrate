@@ -9,6 +9,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import time
 
 from .cache import cache_dir
 
@@ -109,7 +110,17 @@ def api(name, version, log=print):
         except (OSError, ValueError) as e:
             log(f"  prebuilt index for {name} {version} unavailable ({e}); building locally")
             idx.unlink(missing_ok=True)
-    raw = build(name, version, log)
+    # a crate that needs a missing system library fails the same way every run;
+    # remember the failure for a week instead of paying for the attempt again
+    failed = cache_dir("failed") / f"{name}-{version}.txt"
+    if failed.exists() and time.time() - failed.stat().st_mtime < 7 * 86400:
+        raise RustdocError(f"{name} {version}: failed to build recently (delete {failed} to retry):\n    "
+                           + failed.read_text())
+    try:
+        raw = build(name, version, log)
+    except RustdocError as e:
+        failed.write_text(str(e).split("\n", 1)[-1][:2000])
+        raise
     a = Api(raw)
     a.save_index(idx)
     raw.unlink()          # the index holds everything the diff needs
