@@ -1,0 +1,74 @@
+[
+  {
+    "id": "observers",
+    "reference": "ecs/observers.rs",
+    "prompt": "Define a component `Health(f32)`. Use observers (not polling systems) to print a line when a `Health` component is added to an entity and another line when it is removed. In a startup system spawn an entity with `Health(100.0)`. In an update system, once more than 2 seconds have elapsed, remove `Health` from that entity (only once).",
+    "checks": ["add_observer|\\.observe\\(", "Health"]
+  },
+  {
+    "id": "component_hooks",
+    "reference": "ecs/component_hooks.rs",
+    "prompt": "Define a component `Tracked(u32)` and register component lifecycle hooks for it (hooks, not observers) that print when the component is added, when an existing value is overwritten by inserting a new one, and when it is removed. In a startup system spawn an entity with `Tracked(1)`, insert `Tracked(2)` on the same entity, then remove the component.",
+    "checks": ["register_component_hooks|#\\[component\\(", "Tracked"]
+  },
+  {
+    "id": "scene_3d",
+    "reference": "3d/3d_scene.rs",
+    "prompt": "Build a 3D scene: a 10x10 ground plane, a 1 m cube resting on it, a sphere of radius 0.5 next to the cube, each with its own `StandardMaterial` color. Add a point light that casts shadows, a directional light that casts shadows, and a 3D camera looking at the origin from (-4, 5, 8).",
+    "checks": ["Camera3d", "PointLight", "DirectionalLight", "StandardMaterial"]
+  },
+  {
+    "id": "shapes_2d",
+    "reference": "2d/mesh2d.rs",
+    "prompt": "Draw a row of 2D shapes with a 2D camera: a circle, a rectangle, a regular hexagon, a triangle and a capsule, each a different solid color, spaced 150 pixels apart and centered horizontally.",
+    "checks": ["Camera2d", "ColorMaterial|Mesh2d"]
+  },
+  {
+    "id": "picking_3d",
+    "reference": "picking/mesh_picking.rs",
+    "prompt": "Spawn a 3D cube with a light and a camera. Using Bevy's built-in picking, make the cube turn red while the mouse pointer hovers over it and go back to white when the pointer leaves it, and let the user drag it with the mouse so that it moves on the XZ plane by the drag delta.",
+    "checks": ["\\.observe\\(|add_observer", "Mesh3d"]
+  },
+  {
+    "id": "button_counter",
+    "reference": "ui/widgets/button.rs",
+    "prompt": "Make a UI with a single button centered on the screen whose label reads `Clicks: N`. Each time the button is pressed, increment N and update the label. Use Bevy's own UI button support, not a hand-rolled hit test.",
+    "checks": ["Button", "Clicks"]
+  },
+  {
+    "id": "text_ui",
+    "reference": "ui/text/font_weights.rs",
+    "prompt": "Show two lines of UI text centered on the screen: a title `Hello Bevy` at font size 64 using the font file `fonts/Title.ttf` loaded through the asset server, and below it a subtitle `stale APIs, fresh code` at font size 24 in a light gray color using the default font.",
+    "checks": ["Title\\.ttf", "Hello Bevy"]
+  },
+  {
+    "id": "gltf_scene",
+    "reference": "gltf/load_gltf.rs",
+    "prompt": "Load the glTF file `models/robot.glb` with the asset server and spawn its first scene with a camera and a directional light. When the scene has finished spawning, print how many entities it contains.",
+    "checks": ["robot\\.glb"]
+  },
+  {
+    "id": "messages",
+    "reference": "ecs/message.rs",
+    "prompt": "Define a buffered message type `Scored(u32)` (Bevy's message/event-queue mechanism read by readers each frame, not an observer trigger). One system writes `Scored(10)` whenever the Space key is just pressed. Another system reads all `Scored` messages each frame, adds them to a `Total` resource, and prints the total whenever it changes.",
+    "checks": ["Scored", "KeyCode::Space", "Total"]
+  },
+  {
+    "id": "material_anim",
+    "reference": "3d/animated_material.rs",
+    "prompt": "Spawn a sphere with a `StandardMaterial`, a light and a 3D camera. Every frame, mutate that material asset so its base color cycles smoothly through the hue wheel over 5 seconds.",
+    "checks": ["StandardMaterial", "Assets<StandardMaterial>"]
+  },
+  {
+    "id": "bloom",
+    "reference": "3d/bloom_3d.rs",
+    "prompt": "Make a 3D scene with an HDR camera that has bloom enabled and a near-black clear color, showing three emissive spheres (red, green, blue) in a row that glow.",
+    "checks": ["Bloom", "emissive"]
+  },
+  {
+    "id": "sprite_move",
+    "reference": "2d/move_sprite.rs",
+    "prompt": "Load `player.png` as a 2D sprite with a 2D camera and move it with the arrow keys at 300 pixels per second, frame-rate independent, keeping it inside the primary window's bounds.",
+    "checks": ["player\\.png", "KeyCode::Arrow"]
+  }
+]

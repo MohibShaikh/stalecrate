@@ -1,0 +1,15 @@
+__pycache__/
+*.egg-info/
+dist/
+.venv/
+
+# experiment scratch: crate sources, rustdoc JSON, compiler output (several GB)
+work/
+
+# benchmark build caches and per-run outputs
+bench/.target*
+bench/.build*
+bench/runs/
+bench/reference/
+bench/smoke/target/
+bench/*.log
